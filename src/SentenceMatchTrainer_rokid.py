@@ -70,7 +70,7 @@ def evaluation(sess, valid_graph, devDataStream, outpath=None, label_vocab=None)
         correct += cur_correct
         for item in probs:
             all_predict.append(item[1])
-            if item[1]>0.2:
+            if item[1]>0.5:
                 all_predict_binary.append(1)
             else:
                 all_predict_binary.append(0)
@@ -104,11 +104,11 @@ def evaluation(sess, valid_graph, devDataStream, outpath=None, label_vocab=None)
     print('F1-score: %.4f' % metrics.f1_score(all_label, all_predict_binary))
     print('Precesion: %.4f' % metrics.precision_score(all_label, all_predict_binary))
     print()
-    return accuracy
+    return accuracy,metrics.roc_auc_score(all_label, all_predict)
 
 def train(sess, saver, train_graph, valid_graph, trainDataStream, devDataStream, options, best_path):
     best_accuracy = -1
-
+    best_AUC = -1
     for epoch in range(options.max_epochs):
         all_predict = []
         print('Train in epoch %d' % epoch)
@@ -134,20 +134,18 @@ def train(sess, saver, train_graph, valid_graph, trainDataStream, devDataStream,
                     print('Epoch %d: loss = %.4f (%.3f sec)' % (epoch, total_loss / batch_index, duration))
                 # evaluation
                 start_time = time.time()
-                acc = evaluation(sess, valid_graph, devDataStream)
+                acc,auc = evaluation(sess, valid_graph, devDataStream)
                 duration = time.time() - start_time
                 print("Accuracy: %.2f" % acc)
                 print('Evaluation time: %.3f sec' % (duration))
-                if acc>= best_accuracy:
+                if acc >= best_accuracy:
                     best_accuracy = acc
+                    # saver.save(sess, best_path)
+                if auc >= best_AUC:
+                    best_AUC = auc
                     saver.save(sess, best_path)
-        f = open("train_predict.txt", mode="w",encoding="utf-8")
-        print("!!!!")
-        print(len(all_predict))
-        for one in all_predict:
-            f.write(str(one))
-            f.write("\n")
-        f.close()
+    print("bestACC " + str(best_accuracy))
+    print("bestAUC " + str(best_AUC))
 
 def main(FLAGS):
     train_path = FLAGS.train_path
@@ -169,22 +167,26 @@ def main(FLAGS):
     label_path = path_prefix + ".label_vocab"
     has_pre_trained_model = False
     char_vocab = None
+
+    (all_words, all_chars, all_labels, all_POSs, all_NERs) = collect_vocabs(train_path)
+    label_vocab = Vocab(fileformat='voc', voc=all_labels, dim=2)
+
     if os.path.exists(best_path + ".index"):
         has_pre_trained_model = True
-        # print('Loading vocabs from a pre-trained model ...')
-        # label_vocab = Vocab(label_path, fileformat='voc')
-        # if FLAGS.with_char: char_vocab = Vocab(char_path, fileformat='txt2')
-    # else:
-    print('Collecting words, chars and labels ...')
-    (all_words, all_chars, all_labels, all_POSs, all_NERs) = collect_vocabs(train_path)
-    print('Number of words: {}'.format(len(all_words)))
-    label_vocab = Vocab(fileformat='voc', voc=all_labels,dim=2)
-    label_vocab.dump_to_txt2(label_path)
+        print('Loading vocabs from a pre-trained model ...')
+        #    label_vocab = Vocab(label_path, fileformat='txt2')
+        if FLAGS.with_char: char_vocab = Vocab(char_path, fileformat='txt2')
+    else:
+        print('Collecting words, chars and labels ...')
 
-    if FLAGS.with_char:
-        print('Number of chars: {}'.format(len(all_chars)))
-        char_vocab = Vocab(fileformat='voc', voc=all_chars,dim=FLAGS.char_emb_dim)
-        char_vocab.dump_to_txt2(char_path)
+        print('Number of words: {}'.format(len(all_words)))
+
+        #    label_vocab.dump_to_txt2(label_path)
+
+        if FLAGS.with_char:
+            print('Number of chars: {}'.format(len(all_chars)))
+            char_vocab = Vocab(fileformat='voc', voc=all_chars, dim=FLAGS.char_emb_dim)
+            char_vocab.dump_to_txt2(char_path)
 
     print('word_vocab shape is {}'.format(word_vocab.word_vecs.shape))
     num_classes = label_vocab.size()
