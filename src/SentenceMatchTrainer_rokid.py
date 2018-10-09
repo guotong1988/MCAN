@@ -110,7 +110,6 @@ def train(sess, saver, train_graph, valid_graph, trainDataStream, devDataStream,
     best_accuracy = -1
     best_AUC = -1
     for epoch in range(options.max_epochs):
-        all_predict = []
         print('Train in epoch %d' % epoch)
         # training
         trainDataStream.shuffle()
@@ -121,8 +120,6 @@ def train(sess, saver, train_graph, valid_graph, trainDataStream, devDataStream,
             cur_batch = trainDataStream.get_batch(batch_index)
             feed_dict = train_graph.create_feed_dict(cur_batch, is_training=True)
             _, loss_value, probs = sess.run([train_graph.train_op, train_graph.loss,train_graph.prob], feed_dict=feed_dict)
-            for item in probs:
-                all_predict.append(item[1])
             total_loss += loss_value
             if batch_index % 100 == 0:
                 print('{} '.format(batch_index), end="")
