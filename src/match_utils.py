@@ -113,71 +113,130 @@ def MCAN_match_func(in_question_repres,
     question_reps = in_question_repres
     passage_reps = in_passage_repres
 
+    final_question_repres=question_reps
+    final_passage_repres=passage_reps
+    #####
 
-    ##########
+    (match_reps, match_dim) = match_passage_with_question(in_passage_repres, in_question_repres, passage_mask,
+                                                          question_mask, passage_lengths,
+                                                          question_lengths, input_dim, scope="word_match_forward",
+                                                          with_full_match=False,
+                                                          with_maxpool_match=options.with_maxpool_match,
+                                                          with_attentive_match=options.with_attentive_match,
+                                                          with_max_attentive_match=options.with_max_attentive_match,
+                                                          is_training=is_training, options=options,
+                                                          dropout_rate=options.dropout_rate, forward=True)
 
-    relevancy_matrix = cal_relevancy_matrix(question_reps, passage_reps)
-    relevancy_matrix = mask_relevancy_matrix(relevancy_matrix, question_mask, passage_mask)
+    final_passage_repres = tf.concat([final_passage_repres, match_reps],
+                                      axis=-1)
 
-    final_passage_repres=tf.concat([in_passage_repres,tf.reduce_max(relevancy_matrix, axis=2, keep_dims=True)],axis=-1)
-    final_passage_repres=tf.concat([final_passage_repres,tf.reduce_mean(relevancy_matrix, axis=2, keep_dims=True)],axis=-1)
+    (match_reps, match_dim) = match_passage_with_question(in_question_repres, in_passage_repres, question_mask,
+                                                          passage_mask, question_lengths,
+                                                          passage_lengths, input_dim, scope="word_match_backward",
+                                                          with_full_match=False,
+                                                          with_maxpool_match=options.with_maxpool_match,
+                                                          with_attentive_match=options.with_attentive_match,
+                                                          with_max_attentive_match=options.with_max_attentive_match,
+                                                          is_training=is_training, options=options,
+                                                          dropout_rate=options.dropout_rate, forward=False)
+    final_question_repres = tf.concat([final_question_repres, match_reps],
+                                      axis=-1)
 
-    atten_scores = layer_utils.calcuate_attention(passage_reps, question_reps, input_dim, input_dim,
-                                                  scope_name=scope + "_attention", att_type=options.att_type,
-                                                  att_dim=options.att_dim,
-                                                  remove_diagnoal=False, mask1=passage_mask, mask2=question_mask,
-                                                  is_training=is_training, dropout_rate=options.dropout_rate)
-    att_question_contexts = tf.matmul(atten_scores, question_reps)  # batch_size, passage_len, feature_dim
-    (attentive_rep, match_dim) = multi_perspective_match(input_dim,
-                                                         passage_reps, att_question_contexts,
-                                                         is_training=is_training, dropout_rate=options.dropout_rate,
-                                                         options=options, scope_name=scope+'_mp_match_att_question')
-    final_passage_repres = tf.concat([final_passage_repres, attentive_rep],
-                                     axis=-1)
+    #####
 
+    # self-attention
 
-    max_att = cal_max_question_representation(question_reps, relevancy_matrix)
-    (max_attentive_rep, match_dim) = multi_perspective_match(input_dim,
-                                                             passage_reps, max_att, is_training=is_training,
-                                                             dropout_rate=options.dropout_rate,
-                                                             options=options, scope_name=scope+'_mp_match_max_att')
-    final_passage_repres = tf.concat([final_passage_repres, max_attentive_rep],
-                                     axis=-1)
+    # relevancy_matrix3 = cal_relevancy_matrix(question_reps, question_reps)
+    # relevancy_matrix3 = mask_relevancy_matrix(relevancy_matrix3, question_mask, question_mask)
+    # relevancy_matrix3 = tf.nn.softmax(relevancy_matrix3,axis=-1)
+    # relevancy_matrix3 = mask_relevancy_matrix(relevancy_matrix3, question_mask, question_mask)
+    # attended_question = tf.matmul(relevancy_matrix3,question_reps)
+    # final_question_repres=tf.concat([final_question_repres,tf.layers.dense(attended_question, units=5)],axis=-1)
+    #
+    # relevancy_matrix4 = cal_relevancy_matrix(passage_reps, passage_reps)
+    # relevancy_matrix4 = mask_relevancy_matrix(relevancy_matrix4, passage_mask, passage_mask)
+    # relevancy_matrix4 = tf.nn.softmax(relevancy_matrix4, axis=-1)
+    # relevancy_matrix4 = mask_relevancy_matrix(relevancy_matrix4, passage_mask, passage_mask)
+    # attended_passage = tf.matmul(relevancy_matrix4, passage_reps)
+    # final_passage_repres = tf.concat([final_passage_repres, tf.layers.dense(attended_passage, units=5)],
+    #                                  axis=-1)
 
-    #reverse question and passage
-    scope = "reverse_"+scope
-    relevancy_matrix2 = cal_relevancy_matrix(passage_reps,question_reps)
-    relevancy_matrix2 = mask_relevancy_matrix(relevancy_matrix2, passage_mask, question_mask)
+    # LSTM-matching
+    in_question_repres_masked = tf.multiply(in_question_repres, tf.expand_dims(question_mask, axis=-1))
+    in_passage_repres_masked = tf.multiply(in_passage_repres, tf.expand_dims(passage_mask, axis=-1))
+    (question_context_representation_fw, question_context_representation_bw,
+     in_question_repres_masked) = layer_utils.my_lstm_layer(
+        in_question_repres_masked, options.context_lstm_dim, input_lengths=question_lengths,
+        scope_name="context_represent",
+        reuse=False, is_training=is_training, dropout_rate=options.dropout_rate,
+        use_cudnn=options.use_cudnn)
+    (passage_context_representation_fw, passage_context_representation_bw,
+     in_passage_repres_masked) = layer_utils.my_lstm_layer(
+        in_passage_repres_masked, options.context_lstm_dim, input_lengths=passage_lengths,
+        scope_name="context_represent",
+        reuse=True, is_training=is_training, dropout_rate=options.dropout_rate, use_cudnn=options.use_cudnn)
 
-    final_question_repres = tf.concat([in_question_repres, tf.reduce_max(relevancy_matrix2, axis=2, keep_dims=True)], axis=-1)
-    final_question_repres = tf.concat([final_question_repres, tf.reduce_mean(relevancy_matrix2, axis=2, keep_dims=True)],
-                                   axis=-1)
-
-    atten_scores2 = layer_utils.calcuate_attention(question_reps, passage_reps, input_dim,
-                                                   input_dim,
-                                                   scope_name=scope + "_attention", att_type=options.att_type,
-                                                   att_dim=options.att_dim,
-                                                   remove_diagnoal=False, mask1=question_mask, mask2=passage_mask,
-                                                   is_training=is_training, dropout_rate=options.dropout_rate)
-    att_passage_contexts = tf.matmul(atten_scores2, passage_reps)  # batch_size, passage_len, feature_dim
-    (attentive_rep2, match_dim) = multi_perspective_match(input_dim,
-                                                          question_reps, att_passage_contexts,
-                                                          is_training=is_training, dropout_rate=options.dropout_rate,
-                                                          options=options, scope_name=scope+'_mp_match_att_question')
-    final_question_repres = tf.concat([final_question_repres, attentive_rep2],
-                                   axis=-1)
-
-    max_att2 = cal_max_question_representation(passage_reps, relevancy_matrix2)
-    (max_attentive_rep2, match_dim) = multi_perspective_match(input_dim,
-                                                              question_reps, max_att2, is_training=is_training,
+    # Multi-perspective matching
+    with tf.variable_scope('left_MP_matching'):
+        (match_reps, match_dim) = match_passage_with_question(passage_context_representation_fw,
+                                                              question_context_representation_fw,
+                                                              passage_mask, question_mask, passage_lengths,
+                                                              question_lengths, options.context_lstm_dim,
+                                                              scope="forward_match",
+                                                              with_full_match=options.with_full_match,
+                                                              with_maxpool_match=options.with_maxpool_match,
+                                                              with_attentive_match=options.with_attentive_match,
+                                                              with_max_attentive_match=options.with_max_attentive_match,
+                                                              is_training=is_training, options=options,
                                                               dropout_rate=options.dropout_rate,
-                                                              options=options, scope_name=scope+'_mp_match_max_att')
-    final_question_repres = tf.concat([final_question_repres, max_attentive_rep2],
-                                   axis=-1)
+                                                              forward=True)
+        final_passage_repres = tf.concat([final_passage_repres, match_reps],
+                                         axis=-1)
+        (match_reps, match_dim) = match_passage_with_question(passage_context_representation_bw,
+                                                              question_context_representation_bw,
+                                                              passage_mask, question_mask, passage_lengths,
+                                                              question_lengths, options.context_lstm_dim,
+                                                              scope="backward_match",
+                                                              with_full_match=options.with_full_match,
+                                                              with_maxpool_match=options.with_maxpool_match,
+                                                              with_attentive_match=options.with_attentive_match,
+                                                              with_max_attentive_match=options.with_max_attentive_match,
+                                                              is_training=is_training, options=options,
+                                                              dropout_rate=options.dropout_rate,
+                                                              forward=False)
+        final_passage_repres = tf.concat([final_passage_repres, match_reps],
+                                         axis=-1)
 
-
-    ############
-
+    with tf.variable_scope('right_MP_matching'):
+        (match_reps, match_dim) = match_passage_with_question(question_context_representation_fw,
+                                                              passage_context_representation_fw,
+                                                              question_mask, passage_mask, question_lengths,
+                                                              passage_lengths, options.context_lstm_dim,
+                                                              scope="forward_match",
+                                                              with_full_match=options.with_full_match,
+                                                              with_maxpool_match=options.with_maxpool_match,
+                                                              with_attentive_match=options.with_attentive_match,
+                                                              with_max_attentive_match=options.with_max_attentive_match,
+                                                              is_training=is_training, options=options,
+                                                              dropout_rate=options.dropout_rate,
+                                                              forward=True)
+        final_question_repres = tf.concat([final_question_repres, match_reps],
+                                          axis=-1)
+        (match_reps, match_dim) = match_passage_with_question(question_context_representation_bw,
+                                                              passage_context_representation_bw,
+                                                              question_mask, passage_mask, question_lengths,
+                                                              passage_lengths, options.context_lstm_dim,
+                                                              scope="backward_match",
+                                                              with_full_match=options.with_full_match,
+                                                              with_maxpool_match=options.with_maxpool_match,
+                                                              with_attentive_match=options.with_attentive_match,
+                                                              with_max_attentive_match=options.with_max_attentive_match,
+                                                              is_training=is_training, options=options,
+                                                              dropout_rate=options.dropout_rate,
+                                                              forward=False)
+        final_question_repres = tf.concat([final_question_repres, match_reps],
+                                          axis=-1)
+    # final encoder
 
     qa_aggregation_input = final_passage_repres
     pa_aggregation_input = final_question_repres
