@@ -113,6 +113,7 @@ def MCAN_match_func(in_question_repres,
     question_reps = in_question_repres
     passage_reps = in_passage_repres
 
+    total_match_dim = 0
     final_question_repres=question_reps
     final_passage_repres=passage_reps
     #####
@@ -129,7 +130,7 @@ def MCAN_match_func(in_question_repres,
 
     final_passage_repres = tf.concat([final_passage_repres, match_reps],
                                       axis=-1)
-
+    total_match_dim+=match_dim
     (match_reps, match_dim) = match_passage_with_question(in_question_repres, in_passage_repres, question_mask,
                                                           passage_mask, question_lengths,
                                                           passage_lengths, input_dim, scope="word_match_backward",
@@ -140,7 +141,7 @@ def MCAN_match_func(in_question_repres,
                                                           is_training=is_training, options=options,
                                                           dropout_rate=options.dropout_rate, forward=False)
     final_question_repres = tf.concat([final_question_repres, match_reps],
-                                      axis=-1)
+                                       axis=-1)
 
     #####
 
@@ -192,6 +193,7 @@ def MCAN_match_func(in_question_repres,
                                                               forward=True)
         final_passage_repres = tf.concat([final_passage_repres, match_reps],
                                          axis=-1)
+        total_match_dim+=match_dim
         (match_reps, match_dim) = match_passage_with_question(passage_context_representation_bw,
                                                               question_context_representation_bw,
                                                               passage_mask, question_mask, passage_lengths,
@@ -206,7 +208,7 @@ def MCAN_match_func(in_question_repres,
                                                               forward=False)
         final_passage_repres = tf.concat([final_passage_repres, match_reps],
                                          axis=-1)
-
+        total_match_dim += match_dim
     with tf.variable_scope('right_MP_matching'):
         (match_reps, match_dim) = match_passage_with_question(question_context_representation_fw,
                                                               passage_context_representation_fw,
@@ -236,6 +238,23 @@ def MCAN_match_func(in_question_repres,
                                                               forward=False)
         final_question_repres = tf.concat([final_question_repres, match_reps],
                                           axis=-1)
+
+
+    if is_training:
+        final_question_repres = tf.nn.dropout(final_question_repres, (1 - options.dropout_rate))
+        final_passage_repres = tf.nn.dropout(final_passage_repres, (1 - options.dropout_rate))
+    print(total_match_dim)
+    # ======Highway layer======
+    #if options.with_match_highway:
+    #    with tf.variable_scope("left_matching_highway"):
+    #        final_question_repres = multi_highway_layer(final_question_repres, total_match_dim,
+    #                                                            options.highway_layer_num)
+    #    with tf.variable_scope("right_matching_highway"):
+    #        final_passage_repres = multi_highway_layer(final_passage_repres, total_match_dim,
+    #                                                           options.highway_layer_num)
+
+
+
     # final encoder
 
     qa_aggregation_input = final_passage_repres

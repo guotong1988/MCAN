@@ -5,4 +5,4 @@ Multi-Cast Attention Networks
 
 | data\model | BiMPM | MCAN(now) |
 | ------ | ------ | ------ |
-| 30000chinese | AUC 0.900 | AUC 0.883 |
+| 30000chinese | AUC 0.900 | AUC 0.899 |
