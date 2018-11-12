@@ -100,24 +100,18 @@ def cal_max_question_representation(question_representation, atten_scores):
     max_question_reps = layer_utils.collect_representation(question_representation, atten_positions)
     return max_question_reps
 
-def MCAN_match_func(in_question_repres,
-                    in_passage_repres,
-                    question_lengths,
-                    passage_lengths,
-                    question_mask,
-                    passage_mask,
-                    input_dim,
-                    is_training,
-                    scope="default",
-                    options=None):
-    question_reps = in_question_repres
-    passage_reps = in_passage_repres
+def MCAN_match_func(in_question_repres, in_passage_repres,
+                         question_lengths, passage_lengths, question_mask, passage_mask, input_dim, is_training,
+                         options=None):
+    question_aware_representatins = []
+    question_aware_dim = 0
+    passage_aware_representatins = []
+    passage_aware_dim = 0
 
-    total_match_dim = 0
-    final_question_repres=question_reps
-    final_passage_repres=passage_reps
-    #####
-
+    # ====word level matching======
+    # because the with_full_match allways False, so it has no significance that the forward is True or False.
+    # match_passage_with_question(repres1,repres2,...) is to calculate each vector of repres1 to match whole repres2, so the return match_reps size is[batchSize,repres1.length,repre_dim]
+    # passage to question
     (match_reps, match_dim) = match_passage_with_question(in_passage_repres, in_question_repres, passage_mask,
                                                           question_mask, passage_lengths,
                                                           question_lengths, input_dim, scope="word_match_forward",
@@ -126,11 +120,24 @@ def MCAN_match_func(in_question_repres,
                                                           with_attentive_match=options.with_attentive_match,
                                                           with_max_attentive_match=options.with_max_attentive_match,
                                                           is_training=is_training, options=options,
-                                                          dropout_rate=options.dropout_rate, forward=True)
+                                                          dropout_rate=options.dropout_rate, forward=False)
+    question_aware_representatins.append(match_reps)
+    question_aware_dim += match_dim
 
-    final_passage_repres = tf.concat([final_passage_repres, match_reps],
-                                      axis=-1)
-    total_match_dim+=match_dim
+    # add passage to passage
+    (match_reps, match_dim) = match_passage_with_question(in_passage_repres, in_passage_repres, passage_mask,
+                                                          passage_mask, passage_lengths,
+                                                          passage_lengths, input_dim, scope="word_match_passage",
+                                                          with_full_match=False,
+                                                          with_maxpool_match=options.with_maxpool_match,
+                                                          with_attentive_match=options.with_attentive_match,
+                                                          with_max_attentive_match=options.with_max_attentive_match,
+                                                          is_training=is_training, options=options,
+                                                          dropout_rate=options.dropout_rate, forward=False)
+    question_aware_representatins.append(match_reps)
+    question_aware_dim += match_dim
+
+    # question to passage
     (match_reps, match_dim) = match_passage_with_question(in_question_repres, in_passage_repres, question_mask,
                                                           passage_mask, question_lengths,
                                                           passage_lengths, input_dim, scope="word_match_backward",
@@ -140,134 +147,191 @@ def MCAN_match_func(in_question_repres,
                                                           with_max_attentive_match=options.with_max_attentive_match,
                                                           is_training=is_training, options=options,
                                                           dropout_rate=options.dropout_rate, forward=False)
-    final_question_repres = tf.concat([final_question_repres, match_reps],
-                                       axis=-1)
+    passage_aware_representatins.append(match_reps)
+    passage_aware_dim += match_dim
 
-    #####
+    # add question to question
+    (match_reps, match_dim) = match_passage_with_question(in_question_repres, in_question_repres, question_mask,
+                                                          question_mask, question_lengths,
+                                                          question_lengths, input_dim, scope="word_match_question",
+                                                          with_full_match=False,
+                                                          with_maxpool_match=options.with_maxpool_match,
+                                                          with_attentive_match=options.with_attentive_match,
+                                                          with_max_attentive_match=options.with_max_attentive_match,
+                                                          is_training=is_training, options=options,
+                                                          dropout_rate=options.dropout_rate, forward=False)
+    passage_aware_representatins.append(match_reps)
+    passage_aware_dim += match_dim
 
-    # self-attention
+    with tf.variable_scope('context_MP_matching'):
+        for i in range(options.context_layer_num):  # support multiple context layer
+            with tf.variable_scope('layer-{}'.format(i)):
+                # contextual lstm for both passage and question
+                in_question_repres = tf.multiply(in_question_repres, tf.expand_dims(question_mask, axis=-1))
+                in_passage_repres = tf.multiply(in_passage_repres, tf.expand_dims(passage_mask, axis=-1))
+                (question_context_representation_fw, question_context_representation_bw,
+                 in_question_repres) = layer_utils.my_lstm_layer(
+                    in_question_repres, options.context_lstm_dim, input_lengths=question_lengths,
+                    scope_name="context_represent",
+                    reuse=False, is_training=is_training, dropout_rate=options.dropout_rate,
+                    use_cudnn=options.use_cudnn)
+                (passage_context_representation_fw, passage_context_representation_bw,
+                 in_passage_repres) = layer_utils.my_lstm_layer(
+                    in_passage_repres, options.context_lstm_dim, input_lengths=passage_lengths,
+                    scope_name="context_represent",
+                    reuse=True, is_training=is_training, dropout_rate=options.dropout_rate, use_cudnn=options.use_cudnn)
 
-    # relevancy_matrix3 = cal_relevancy_matrix(question_reps, question_reps)
-    # relevancy_matrix3 = mask_relevancy_matrix(relevancy_matrix3, question_mask, question_mask)
-    # relevancy_matrix3 = tf.nn.softmax(relevancy_matrix3,axis=-1)
-    # relevancy_matrix3 = mask_relevancy_matrix(relevancy_matrix3, question_mask, question_mask)
-    # attended_question = tf.matmul(relevancy_matrix3,question_reps)
-    # final_question_repres=tf.concat([final_question_repres,tf.layers.dense(attended_question, units=5)],axis=-1)
-    #
-    # relevancy_matrix4 = cal_relevancy_matrix(passage_reps, passage_reps)
-    # relevancy_matrix4 = mask_relevancy_matrix(relevancy_matrix4, passage_mask, passage_mask)
-    # relevancy_matrix4 = tf.nn.softmax(relevancy_matrix4, axis=-1)
-    # relevancy_matrix4 = mask_relevancy_matrix(relevancy_matrix4, passage_mask, passage_mask)
-    # attended_passage = tf.matmul(relevancy_matrix4, passage_reps)
-    # final_passage_repres = tf.concat([final_passage_repres, tf.layers.dense(attended_passage, units=5)],
-    #                                  axis=-1)
+                # Multi-perspective matching
+                with tf.variable_scope('left_MP_matching'):
+                    (match_reps, match_dim) = match_passage_with_question(passage_context_representation_fw,
+                                                                          question_context_representation_fw,
+                                                                          passage_mask, question_mask, passage_lengths,
+                                                                          question_lengths, options.context_lstm_dim,
+                                                                          scope="ques_forward_match",
+                                                                          with_full_match=options.with_full_match,
+                                                                          with_maxpool_match=options.with_maxpool_match,
+                                                                          with_attentive_match=options.with_attentive_match,
+                                                                          with_max_attentive_match=options.with_max_attentive_match,
+                                                                          is_training=is_training, options=options,
+                                                                          dropout_rate=options.dropout_rate,
+                                                                          forward=True)
+                    question_aware_representatins.append(match_reps)
+                    question_aware_dim += match_dim
+                    (match_reps, match_dim) = match_passage_with_question(passage_context_representation_bw,
+                                                                          question_context_representation_bw,
+                                                                          passage_mask, question_mask, passage_lengths,
+                                                                          question_lengths, options.context_lstm_dim,
+                                                                          scope="ques_backward_match",
+                                                                          with_full_match=options.with_full_match,
+                                                                          with_maxpool_match=options.with_maxpool_match,
+                                                                          with_attentive_match=options.with_attentive_match,
+                                                                          with_max_attentive_match=options.with_max_attentive_match,
+                                                                          is_training=is_training, options=options,
+                                                                          dropout_rate=options.dropout_rate,
+                                                                          forward=False)
+                    question_aware_representatins.append(match_reps)
+                    question_aware_dim += match_dim
+                    # add passage to passage
+                    (match_reps, match_dim) = match_passage_with_question(passage_context_representation_fw,
+                                                                          passage_context_representation_fw,
+                                                                          passage_mask, passage_mask, passage_lengths,
+                                                                          passage_lengths, options.context_lstm_dim,
+                                                                          scope="pass_self_forward_match",
+                                                                          with_full_match=options.with_full_match,
+                                                                          with_maxpool_match=options.with_maxpool_match,
+                                                                          with_attentive_match=options.with_attentive_match,
+                                                                          with_max_attentive_match=options.with_max_attentive_match,
+                                                                          is_training=is_training, options=options,
+                                                                          dropout_rate=options.dropout_rate,
+                                                                          forward=True)
 
-    # LSTM-matching
-    in_question_repres_masked = tf.multiply(in_question_repres, tf.expand_dims(question_mask, axis=-1))
-    in_passage_repres_masked = tf.multiply(in_passage_repres, tf.expand_dims(passage_mask, axis=-1))
-    (question_context_representation_fw, question_context_representation_bw,
-     in_question_repres_masked) = layer_utils.my_lstm_layer(
-        in_question_repres_masked, options.context_lstm_dim, input_lengths=question_lengths,
-        scope_name="context_represent",
-        reuse=False, is_training=is_training, dropout_rate=options.dropout_rate,
-        use_cudnn=options.use_cudnn)
-    (passage_context_representation_fw, passage_context_representation_bw,
-     in_passage_repres_masked) = layer_utils.my_lstm_layer(
-        in_passage_repres_masked, options.context_lstm_dim, input_lengths=passage_lengths,
-        scope_name="context_represent",
-        reuse=True, is_training=is_training, dropout_rate=options.dropout_rate, use_cudnn=options.use_cudnn)
+                    question_aware_representatins.append(match_reps)
+                    question_aware_dim += match_dim
+                    (match_reps, match_dim) = match_passage_with_question(passage_context_representation_bw,
+                                                                          passage_context_representation_bw,
+                                                                          passage_mask, passage_mask, passage_lengths,
+                                                                          passage_lengths, options.context_lstm_dim,
+                                                                          scope="pass_self_backward_match",
+                                                                          with_full_match=options.with_full_match,
+                                                                          with_maxpool_match=options.with_maxpool_match,
+                                                                          with_attentive_match=options.with_attentive_match,
+                                                                          with_max_attentive_match=options.with_max_attentive_match,
+                                                                          is_training=is_training, options=options,
+                                                                          dropout_rate=options.dropout_rate,
+                                                                          forward=False)
+                    question_aware_representatins.append(match_reps)
+                    question_aware_dim += match_dim
 
-    # Multi-perspective matching
-    with tf.variable_scope('left_MP_matching'):
-        (match_reps, match_dim) = match_passage_with_question(passage_context_representation_fw,
-                                                              question_context_representation_fw,
-                                                              passage_mask, question_mask, passage_lengths,
-                                                              question_lengths, options.context_lstm_dim,
-                                                              scope="forward_match",
-                                                              with_full_match=options.with_full_match,
-                                                              with_maxpool_match=options.with_maxpool_match,
-                                                              with_attentive_match=options.with_attentive_match,
-                                                              with_max_attentive_match=options.with_max_attentive_match,
-                                                              is_training=is_training, options=options,
-                                                              dropout_rate=options.dropout_rate,
-                                                              forward=True)
-        final_passage_repres = tf.concat([final_passage_repres, match_reps],
-                                         axis=-1)
-        total_match_dim+=match_dim
-        (match_reps, match_dim) = match_passage_with_question(passage_context_representation_bw,
-                                                              question_context_representation_bw,
-                                                              passage_mask, question_mask, passage_lengths,
-                                                              question_lengths, options.context_lstm_dim,
-                                                              scope="backward_match",
-                                                              with_full_match=options.with_full_match,
-                                                              with_maxpool_match=options.with_maxpool_match,
-                                                              with_attentive_match=options.with_attentive_match,
-                                                              with_max_attentive_match=options.with_max_attentive_match,
-                                                              is_training=is_training, options=options,
-                                                              dropout_rate=options.dropout_rate,
-                                                              forward=False)
-        final_passage_repres = tf.concat([final_passage_repres, match_reps],
-                                         axis=-1)
-        total_match_dim += match_dim
-    with tf.variable_scope('right_MP_matching'):
-        (match_reps, match_dim) = match_passage_with_question(question_context_representation_fw,
-                                                              passage_context_representation_fw,
-                                                              question_mask, passage_mask, question_lengths,
-                                                              passage_lengths, options.context_lstm_dim,
-                                                              scope="forward_match",
-                                                              with_full_match=options.with_full_match,
-                                                              with_maxpool_match=options.with_maxpool_match,
-                                                              with_attentive_match=options.with_attentive_match,
-                                                              with_max_attentive_match=options.with_max_attentive_match,
-                                                              is_training=is_training, options=options,
-                                                              dropout_rate=options.dropout_rate,
-                                                              forward=True)
-        final_question_repres = tf.concat([final_question_repres, match_reps],
-                                          axis=-1)
-        (match_reps, match_dim) = match_passage_with_question(question_context_representation_bw,
-                                                              passage_context_representation_bw,
-                                                              question_mask, passage_mask, question_lengths,
-                                                              passage_lengths, options.context_lstm_dim,
-                                                              scope="backward_match",
-                                                              with_full_match=options.with_full_match,
-                                                              with_maxpool_match=options.with_maxpool_match,
-                                                              with_attentive_match=options.with_attentive_match,
-                                                              with_max_attentive_match=options.with_max_attentive_match,
-                                                              is_training=is_training, options=options,
-                                                              dropout_rate=options.dropout_rate,
-                                                              forward=False)
-        final_question_repres = tf.concat([final_question_repres, match_reps],
-                                          axis=-1)
+                with tf.variable_scope('right_MP_matching'):
+                    (match_reps, match_dim) = match_passage_with_question(question_context_representation_fw,
+                                                                          passage_context_representation_fw,
+                                                                          question_mask, passage_mask, question_lengths,
+                                                                          passage_lengths, options.context_lstm_dim,
+                                                                          scope="pass_forward_match",
+                                                                          with_full_match=options.with_full_match,
+                                                                          with_maxpool_match=options.with_maxpool_match,
+                                                                          with_attentive_match=options.with_attentive_match,
+                                                                          with_max_attentive_match=options.with_max_attentive_match,
+                                                                          is_training=is_training, options=options,
+                                                                          dropout_rate=options.dropout_rate,
+                                                                          forward=True)
+                    passage_aware_representatins.append(match_reps)
+                    passage_aware_dim += match_dim
+                    (match_reps, match_dim) = match_passage_with_question(question_context_representation_bw,
+                                                                          passage_context_representation_bw,
+                                                                          question_mask, passage_mask, question_lengths,
+                                                                          passage_lengths, options.context_lstm_dim,
+                                                                          scope="pass_backward_match",
+                                                                          with_full_match=options.with_full_match,
+                                                                          with_maxpool_match=options.with_maxpool_match,
+                                                                          with_attentive_match=options.with_attentive_match,
+                                                                          with_max_attentive_match=options.with_max_attentive_match,
+                                                                          is_training=is_training, options=options,
+                                                                          dropout_rate=options.dropout_rate,
+                                                                          forward=False)
+                    passage_aware_representatins.append(match_reps)
+                    passage_aware_dim += match_dim
+                    # add question to question
+                    (match_reps, match_dim) = match_passage_with_question(question_context_representation_fw,
+                                                                          question_context_representation_fw,
+                                                                          question_mask, question_mask,
+                                                                          question_lengths,
+                                                                          question_lengths, options.context_lstm_dim,
+                                                                          scope="ques_self_forward_match",
+                                                                          with_full_match=options.with_full_match,
+                                                                          with_maxpool_match=options.with_maxpool_match,
+                                                                          with_attentive_match=options.with_attentive_match,
+                                                                          with_max_attentive_match=options.with_max_attentive_match,
+                                                                          is_training=is_training, options=options,
+                                                                          dropout_rate=options.dropout_rate,
+                                                                          forward=True)
+                    passage_aware_representatins.append(match_reps)
+                    passage_aware_dim += match_dim
+                    (match_reps, match_dim) = match_passage_with_question(question_context_representation_bw,
+                                                                          question_context_representation_bw,
+                                                                          question_mask, question_mask, question_lengths,
+                                                                          question_lengths, options.context_lstm_dim,
+                                                                          scope="ques_self_backward_match",
+                                                                          with_full_match=options.with_full_match,
+                                                                          with_maxpool_match=options.with_maxpool_match,
+                                                                          with_attentive_match=options.with_attentive_match,
+                                                                          with_max_attentive_match=options.with_max_attentive_match,
+                                                                          is_training=is_training, options=options,
+                                                                          dropout_rate=options.dropout_rate,
+                                                                          forward=False)
+                    passage_aware_representatins.append(match_reps)
+                    passage_aware_dim += match_dim
 
+    question_aware_representatins = tf.concat(axis=2,
+                                              values=question_aware_representatins)  # [batch_size, passage_len, question_aware_dim]
+    passage_aware_representatins = tf.concat(axis=2,
+                                             values=passage_aware_representatins)  # [batch_size, question_len, question_aware_dim]
 
     if is_training:
-        final_question_repres = tf.nn.dropout(final_question_repres, (1 - options.dropout_rate))
-        final_passage_repres = tf.nn.dropout(final_passage_repres, (1 - options.dropout_rate))
-    print(total_match_dim)
+        question_aware_representatins = tf.nn.dropout(question_aware_representatins, (1 - options.dropout_rate))
+        passage_aware_representatins = tf.nn.dropout(passage_aware_representatins, (1 - options.dropout_rate))
+
     # ======Highway layer======
-    #if options.with_match_highway:
-    #    with tf.variable_scope("left_matching_highway"):
-    #        final_question_repres = multi_highway_layer(final_question_repres, total_match_dim,
-    #                                                            options.highway_layer_num)
-    #    with tf.variable_scope("right_matching_highway"):
-    #        final_passage_repres = multi_highway_layer(final_passage_repres, total_match_dim,
-    #                                                           options.highway_layer_num)
+    if options.with_match_highway:
+        with tf.variable_scope("left_matching_highway"):
+            question_aware_representatins = multi_highway_layer(question_aware_representatins, question_aware_dim,
+                                                                options.highway_layer_num)
+        with tf.variable_scope("right_matching_highway"):
+            passage_aware_representatins = multi_highway_layer(passage_aware_representatins, passage_aware_dim,
+                                                               options.highway_layer_num)
 
-
-
-    # final encoder
-
-    qa_aggregation_input = final_passage_repres
-    pa_aggregation_input = final_question_repres
+    # ========Aggregation Layer======
     aggregation_representation = []
     aggregation_dim = 0
+
+    qa_aggregation_input = question_aware_representatins
+    pa_aggregation_input = passage_aware_representatins
     with tf.variable_scope('aggregation_layer'):
         for i in range(options.aggregation_layer_num):  # support multiple aggregation layer
-            if passage_mask != None:
-                qa_aggregation_input = tf.multiply(qa_aggregation_input, tf.expand_dims(passage_mask, axis=-1))
+            qa_aggregation_input = tf.multiply(qa_aggregation_input, tf.expand_dims(passage_mask, axis=-1))
             (fw_rep, bw_rep, cur_aggregation_representation) = layer_utils.my_lstm_layer(
                 qa_aggregation_input, options.aggregation_lstm_dim, input_lengths=passage_lengths,
-                scope_name=scope + '_left_layer-{}'.format(i),
+                scope_name='left_layer-{}'.format(i),
                 reuse=False, is_training=is_training, dropout_rate=options.dropout_rate, use_cudnn=options.use_cudnn)
             fw_rep = layer_utils.collect_final_step_of_lstm(fw_rep, passage_lengths - 1)
             bw_rep = bw_rep[:, 0, :]
@@ -275,11 +339,11 @@ def MCAN_match_func(in_question_repres,
             aggregation_representation.append(bw_rep)
             aggregation_dim += 2 * options.aggregation_lstm_dim
             qa_aggregation_input = cur_aggregation_representation  # [batch_size, passage_len, 2*aggregation_lstm_dim]
-            if question_mask != None:
-                pa_aggregation_input = tf.multiply(pa_aggregation_input, tf.expand_dims(question_mask, axis=-1))
+
+            pa_aggregation_input = tf.multiply(pa_aggregation_input, tf.expand_dims(question_mask, axis=-1))
             (fw_rep, bw_rep, cur_aggregation_representation) = layer_utils.my_lstm_layer(
                 pa_aggregation_input, options.aggregation_lstm_dim,
-                input_lengths=question_lengths, scope_name=scope + '_right_layer-{}'.format(i),
+                input_lengths=question_lengths, scope_name='right_layer-{}'.format(i),
                 reuse=False, is_training=is_training, dropout_rate=options.dropout_rate, use_cudnn=options.use_cudnn)
             fw_rep = layer_utils.collect_final_step_of_lstm(fw_rep, question_lengths - 1)
             bw_rep = bw_rep[:, 0, :]
@@ -292,7 +356,7 @@ def MCAN_match_func(in_question_repres,
 
     # ======Highway layer======
     if options.with_aggregation_highway:
-        with tf.variable_scope(scope + "_aggregation_highway"):
+        with tf.variable_scope("aggregation_highway"):
             agg_shape = tf.shape(aggregation_representation)
             batch_size = agg_shape[0]
             aggregation_representation = tf.reshape(aggregation_representation, [1, batch_size, aggregation_dim])
@@ -301,6 +365,7 @@ def MCAN_match_func(in_question_repres,
             aggregation_representation = tf.reshape(aggregation_representation, [batch_size, aggregation_dim])
 
     return (aggregation_representation, aggregation_dim)
+
 
 
 def multi_perspective_match(feature_dim, repres1, repres2, is_training=True, dropout_rate=0.2,
