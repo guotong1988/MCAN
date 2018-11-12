@@ -3,7 +3,7 @@ Multi-Cast Attention Networks
 
 ## experiment results:
 
-| data\model | BiMPM | MCAN(now) |
+| data\model | BiMPM | MCAN |
 | ------ | ------ | ------ |
-| 30000chinese | AUC 0.900 | AUC 0.899 |
+| chinese data here | AUC 0.900 | AUC 0.891 |
 | quora | ACC 0.881 | ACC 0.891 |
