@@ -1,5 +1,14 @@
-## MCAN
-Multi-Cast Attention Networks
+## MatchZoo-tensorflow
+
+Working in progress:
+
+One-Turn
+
+Multi-Turn
+
+Raw-Ranking
+
+Fine-Ranking
 
 ## experiment results:
 
