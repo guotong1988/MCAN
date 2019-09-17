@@ -6,7 +6,7 @@ One-Turn
 
 Multi-Turn
 
-Raw-Ranking
+Coarse-Ranking
 
 Fine-Ranking
 
