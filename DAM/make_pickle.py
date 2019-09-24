@@ -8,7 +8,7 @@ from gensim.models.word2vec import Word2Vec
 logger = logging.getLogger('relevance_logger')
 
 
-def build_multiturn_data(trainfile, word2id = None, isshuffle=False):
+def sub_makedata_douban(trainfile, word2id = None, isshuffle=False):
     all_data_y = []
     all_data_c = []
     all_data_r = []
@@ -51,23 +51,39 @@ def build_multiturn_data(trainfile, word2id = None, isshuffle=False):
 
 
 
-def ParseMultiTurn():
+def makedata_douban():
     logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
-    f = open("C:\\Users\\gt\\Desktop\\Dialogue-master\\Research\\vocab-cn.txt", mode="r", encoding="utf-8")
+    f = open("../sample_data/vocab-cn.txt", mode="r", encoding="utf-8")
     word2id = {}
     lines = f.readlines()
     for i,line in enumerate(lines):
         word2id[line.rstrip()] = i
     word2id["_EOS_"] = len(word2id)
     print("_EOS_",word2id["_EOS_"])
-    data1 = build_multiturn_data("train.txt", word2id=word2id, isshuffle=False)
-    data2 = build_multiturn_data("dev.txt", word2id=word2id, isshuffle=False)
-    data3 = build_multiturn_data("test.txt", word2id=word2id, isshuffle=False)
+    data1 = sub_makedata_douban("train.txt", word2id=word2id, isshuffle=False)
+    data2 = sub_makedata_douban("dev.txt", word2id=word2id, isshuffle=False)
+    data3 = sub_makedata_douban("test.txt", word2id=word2id, isshuffle=False)
 
     pickle.dump([data1, data2, data3], open("douban_data.pkl",'wb'))
 
+def makedata_quora():
+    logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
+    f = open("../sample_data/vocab-cn.txt", mode="r", encoding="utf-8")
+    word2id = {}
+    lines = f.readlines()
+    for i,line in enumerate(lines):
+        word2id[line.rstrip()] = i
+    word2id["_EOS_"] = len(word2id)
+    print("_EOS_",word2id["_EOS_"])
+    data1 = sub_makedata_douban("train.txt", word2id=word2id, isshuffle=False)
+    data2 = sub_makedata_douban("dev.txt", word2id=word2id, isshuffle=False)
+    data3 = sub_makedata_douban("test.txt", word2id=word2id, isshuffle=False)
+
+    pickle.dump([data1, data2, data3], open("douban_data.pkl",'wb'))
+
+# 从词向量搞出字向量，BERT字典的
 def make_emd():
-    f = open("C:\\Users\\gt\\Desktop\\Dialogue-master\\Research\\vocab-cn.txt", mode="r", encoding="utf-8")
+    f = open("../sample_data/vocab-cn.txt", mode="r", encoding="utf-8")
     word_list = []
     lines = f.readlines()
     for i, line in enumerate(lines):
@@ -101,5 +117,5 @@ def make_emd():
     logger.info("dataset created!")
 
 if __name__=="__main__":
-    ParseMultiTurn()
+    makedata_douban()
     make_emd()
