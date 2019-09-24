@@ -10,6 +10,8 @@ Coarse-Ranking
 
 Fine-Ranking
 
+Sentence-Embedding
+
 ## experiment results:
 
 | data\model | BiMPM | MCAN |
