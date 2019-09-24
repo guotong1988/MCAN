@@ -9,7 +9,9 @@ logger = logging.getLogger('relevance_logger')
 
 
 def build_multiturn_data(trainfile, word2id = None, isshuffle=False):
-    all_data = []
+    all_data_y = []
+    all_data_c = []
+    all_data_r = []
     total = 1
     with open(trainfile, mode = 'r', encoding = 'utf-8') as f:
         for line in f:
@@ -34,17 +36,18 @@ def build_multiturn_data(trainfile, word2id = None, isshuffle=False):
                     else:
                         response.append(word2id["[UNK]"])
 
-            data = {"y" : label, "c": message, "r": response}
-            all_data.append(data)
+            all_data_c.append(message)
+            all_data_r.append(response)
+            all_data_y.append(label)
             total += 1
             if total % 10000 == 0:
                 print(total)
-
+    all_data = {"y": all_data_y, "c": all_data_c, "r": all_data_r}
     logger.info("processed dataset with %d question-answer pairs " %(len(all_data)))
     logger.info("vocab size: %d" % (len(word2id)))
     if isshuffle == True:
         shuffle(all_data)
-    return all_data,
+    return all_data
 
 
 import json
