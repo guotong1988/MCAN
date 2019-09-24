@@ -50,7 +50,6 @@ def build_multiturn_data(trainfile, word2id = None, isshuffle=False):
     return all_data
 
 
-import json
 
 def ParseMultiTurn():
     logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
