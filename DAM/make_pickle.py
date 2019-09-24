@@ -103,7 +103,7 @@ def makedata_douban():
     data2 = sub_makedata_douban("data/douban/dev.txt", word2id=word2id, isshuffle=False)
     data3 = sub_makedata_douban("data/douban/test.txt", word2id=word2id, isshuffle=False)
 
-    pickle.dump([data1, data2, data3], open("douban_data.pkl",'wb'))
+    pickle.dump([data1, data2, data3], open("data/douban/douban_data.pkl",'wb'))
 
 def makedata_quora():
     logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
@@ -124,8 +124,8 @@ def makedata_quora():
     data1 = sub_makedata_quora("data/quora/train.tsv", word2id=word2id, isshuffle=False)
     data2 = sub_makedata_quora("data/quora/dev.tsv", word2id=word2id, isshuffle=False)
     data3 = sub_makedata_quora("data/quora/test.tsv", word2id=word2id, isshuffle=False)
-    pickle.dump(all_word2vec, open("quora_word_embedding.pkl", 'wb'))
-    pickle.dump([data1, data2, data3], open("quora_data.pkl",'wb'))
+    pickle.dump(all_word2vec, open("data/quora/quora_word_embedding.pkl", 'wb'))
+    pickle.dump([data1, data2, data3], open("data/quora/quora_data.pkl",'wb'))
 
 # 从词向量搞出字向量，BERT字典的
 def make_emd():
@@ -158,7 +158,7 @@ def make_emd():
         else:
             wordvec_list.append([0]*300)
 
-    pickle.dump(wordvec_list, open("char_embedding.pkl", 'wb'))
+    pickle.dump(wordvec_list, open("data/douban/char_embedding.pkl", 'wb'))
 
     logger.info("dataset created!")
 
