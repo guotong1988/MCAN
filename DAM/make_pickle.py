@@ -109,16 +109,16 @@ def makedata_quora():
     logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
     f = open("data/quora/wordvec.txt", mode="r", encoding="utf-8")
     word2id = {}
-    all_word2vec = {}
+    all_word2vec = []
     def to_float(input):
         return float(input)
     lines = f.readlines()
     word2id["_PAD_"] = 0
-    all_word2vec["_PAD_"] = [0]*300
+    all_word2vec.append([0]*300)
     for i,line in enumerate(lines):
         splits = line.rstrip().split(" ")
         word2id[splits[0]] = i+1
-        all_word2vec[splits[0]] = list(map(to_float, splits[1:]))
+        all_word2vec.append(list(map(to_float, splits[1:])))
     word2id["_EOS_"] = len(word2id)
     print("_EOS_",word2id["_EOS_"])
     data1 = sub_makedata_quora("data/quora/train.tsv", word2id=word2id, isshuffle=False)
