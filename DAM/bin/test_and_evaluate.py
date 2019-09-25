@@ -28,20 +28,12 @@ def read_word2id():
 
 
 def read_word2id_douban():
-    f = open("data/douban/word2id",mode="r",encoding="utf-8",errors="ignore")
+    f = open("../sample_data/vocab-cn.txt",mode="r",encoding="utf-8")
     word2id = {}
     id2word = {}
-    i = 0
-    for line in f:
-        i+=1
-        if i>=77497:
-          splits = line.rstrip().split("\t")
-          if len(splits)!=2:
-              continue
-          word2id[splits[0]] = splits[1]
-          id2word[splits[1]] = splits[0]
-    # word2id["_PAD_"] = "0"
-    # id2word["0"] = "_PAD_"
+    for i,line in enumerate(f):
+        word2id[line.rstrip()] = i
+        id2word[str(i)]=line.rstrip()
     print("word2id",len(word2id))
     return word2id,id2word
 

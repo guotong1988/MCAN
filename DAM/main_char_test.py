@@ -51,7 +51,7 @@ conf = {
 
 fast_debug = False
 model = net.Net(conf, fast_debug)
-train.train(conf, model)
+# train.train(conf, model)
 
 #test and evaluation, init_model in conf should be set
 test.test(conf, model)
