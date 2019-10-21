@@ -12,4 +12,8 @@ Fine-Ranking
 
 Sentence-Embedding
 
+## Reference
 
+https://github.com/zhiguowang/BiMPM
+
+https://github.com/baidu/Dialogue
